@@ -1,0 +1,32 @@
+1) created  InvalidMerchVisitFilter.java
+this is to filter the records based on values
+
+Learnings
+
+private static final Fields fields = FieldSelector.fields(CleansedHitFieldsSubSet.C9, CleansedHitFieldsSubSet.OMNITURE_EXCLUDED);
+In the above this FieldSelector.fields is very important , it will allow you to create a group of fields  .
+
+If you do Fields fields = new Fields(CleansedHitFieldsSubSet.C9, CleansedHitFieldsSubSet.OMNITURE_EXCLUDED); this will give an error
+
+used Mockito to test code and verify() to test executions
+
+
+2) Created AllMarketingSeo30DayRltTransform.java   that will transform a field
+
+Learnings 
+private static final Fields fields = FieldSelector.fields(CleansedHitFieldsSubSet.C9, CleansedHitFieldsSubSet.OMNITURE_EXCLUDED); made a mistake again , got to drill this into my head
+try and see how plain vanilla cascading will work
+
+update pom.xml to use new plunger code.
+
+learnt to use Plunger  , especially built the functioncallstub
+
+
+
+
+
+
+
+
+
+ 
