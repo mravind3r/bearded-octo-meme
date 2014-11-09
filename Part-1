@@ -1,0 +1,270 @@
+Basics:
+
+cascading story in short
+we need
+1)a source file
+2)Scheme of the source file
+3)2 taps , intap and sinktap  - tap is built using sourcefile + scheme
+4)Pipe assembly - we do all the operations here ie joins,transformations etc
+5)FlowDef  -- this connects the pipes to the taps  =  tap(source+scheme) +  pipe(transformations) 
+6)Flow -- this is the final step that completes the plumbing , ie opens the flow of water !!  Flow --> connets the FlowDef() and calls complete() to run the cascade assembly.
+
+
+
+Function various issues that I encountered..
+
+Thumb rule: The function should 
+
+Correct results:
+
+
+class UpperNames {
+        public UpperNames(Fields nameField) {
+              // means this function expecting one field denoted by 1, this is significant as
+              // the code uses arguments.getString(0) -- index starts with zero 
+              // namefield is the field that this function will produce.
+		super(1, nameField);   
+	}
+
+	@Override
+	public void operate(FlowProcess flowProcess, FunctionCall<Void> functionCall) {
+		TupleEntry arguments = functionCall.getArguments();
+		Tuple outputTuple = new Tuple();// this has to be a new tuple , remember mapreduce
+		outputTuple.add(arguments.getString(0).toUpperCase());  
+                // we add to the tuple in the same order as we have the fields coming thru
+                // here we have one field -- ie name so this is ok , what if we had firstname and last name fields, we shud contruct the tuple in the same manner  
+
+               functionCall.getOutputCollector().add(outputTuple); // the output tuple
+	}
+
+}
+
+use in a pipe ...
+
+pipe = new Each(pipe, new Fields("name"), new UpperNames(new Fields("name")), Fields.REPLACE);
+the second field is name -- this is the selector ie the field that will go into the function
+the uppernames constructor has fields name that will be the output field in the output tuple as defined in the function
+// finally the Fields.Replace -- this will replace the field(name) from the input tuple the pipe has [empno,name,sal,deptid]  with the name field that the function spits out.  
+ 
+
+
+Error conditions encountered befoe i came to the correct function above...
+
+
+modified the UpperNames {
+
+public UpperNames() {
+ super(1); this is ok , expecting 1 field and outgoing fields have not been defined
+}
+// operate reamins the same
+
+}
+
+pipe = new Each(pipe, new Fields("name"), new UpperNames());
+pipe = new Each(pipe, new Debug());
+
+This is ok , but the the output will be  [LEAH],[ABC] , this is not the ouput i want
+i want the entire tuple and have got to make Each() work for me  output shud be [1,LEAH,2000,3] and not just [LEAH]
+
+so I did the following change in 
+
+pipe = new Each(pipe, new Fields("name"), new UpperNames(),Fields.REPLACE);// change 
+pipe = new Each(pipe, new Debug());
+
+this will throw an runtime arror as cascading does not know which field to replace as we have not specified the field to be replaced in the constructor.
+// changing the function contructor to   UpperNames(Fields name) {  super(1,names) } will give the above output
+
+
+// one more error
+keeping the above bug in mind i tried to change Fields.Replace to Fields.all just to get the desired output but the results are as follows
+['434', 'Leah', '3562', '3', 'LEAH']
+['133', 'Tanya', '6249', '3', 'TANYA']
+
+here you see an extra field was inserted with caps name , also further ahead the program does not know this field set , any operations here after will thro unknowfields expetion ?? verify this not sure
+
+
+
+one more bad way of programming is to use the tuplentry to set the fields, this should be discouraged.
+eg
+TupleEntry.setString("fieldname","uppercaseconvert") -- this couples the function to the field(fieldname) an index 0,1,2 shud be used rather
+
+
+*******************************************************************************************************************************
+Inserting a field 
+// now insert field based on sal values -- 1000-3500 = low, 3501- 6000 = med and  >6001 hi
+
+public InsertSalaryIdentifier(Fields salIdentifier) {
+		super(1, salIdentifier);
+	}
+
+	@Override
+	public void operate(FlowProcess flowProcess, FunctionCall<Void> functionCall) {
+		TupleEntry arguments = functionCall.getArguments();
+		Tuple outputTuple = new Tuple();
+		Integer sal = Integer.parseInt(arguments.getString(0));
+		// sal values -- 1000-3500 = low, 3501- 6000 = med and >6001 hi
+		if (sal <= 3500) {
+			outputTuple.setString(0, "low");  // this is add and not set error will be resolved
+		} else if (sal <= 6000) {
+			outputTuple.setString(0, "med"); // this is add and not set error will be resolved
+		} else {
+			outputTuple.setString(0, "hi"); // this is add and not set error will be resolved
+		}
+
+		functionCall.getOutputCollector().add(outputTuple);
+
+}
+
+
+
+pipe = new Each(pipe, new Fields("sal"), new InsertSalaryIdentifier(
+				new Fields("salIdentifier")), Fields.ALL);  // important to note here is i am sending in a new field "salidentifier" as this should for a part of my output
+
+// Fields.all is used here cos I want to inlcude this new field as a part of my output tuple
+
+error:
+java.lang.Exception: cascading.tuple.TupleException: failed to set a value, tuple may not be initialized with values, is zero length
+	at org.apache.hadoop.mapred.LocalJobRunner$Job.run(LocalJobRunner.java:354)
+Caused by: cascading.tuple.TupleException: failed to set a value, tuple may not be initialized with values, is zero length
+
+Resolution:
+outputTuple.setString(0, "low");  // this is add and not set error will be resolved
+
+
+
+new output after resolution of above is :
+['434', 'LEAH', '3562', '3', 'med']
+['133', 'TANYA', '6249', '3', 'hi']
+
+
+
+Inserting a new field using ExpressionFunction -- difficuilt task
+
+
+
+**************************************
+using a guava Predicate and writing a filter function
+
+Predicate<String> deptFilter = new Predicate<String>() {
+
+			@Override
+			public boolean apply(String arg0) {
+				Integer deptNo = Integer.parseInt(arg0.toString());
+				return deptNo == 5;
+			}
+		};
+pipe = new Each(pipe, new Fields("deptno"), new RemoveDeptNos(deptFilter));
+
+
+
+public class RemoveDeptNos extends BaseOperation<Void> implements Filter<Void> {
+	private static final long serialVersionUID = 1L;
+	private Predicate<String> filter;  // cause of the error
+
+	public RemoveDeptNos(Predicate<String> filter) {
+		super(1);
+		this.filter = filter;
+	}
+
+	@Override
+	public boolean isRemove(FlowProcess flowProcess, FilterCall<Void> filterCall) {
+		TupleEntry tupleEntry = filterCall.getArguments();
+		String content = tupleEntry.getTuple().getString(0);
+		return filter.apply(content);
+	}
+}
+
+
+
+Error: 
+Exception in thread "main" cascading.flow.planner.PlannerException: could not build flow from assembly: [unable to pack object: cascading.flow.hadoop.HadoopFlowStep]
+	at cascading.flow.planner.FlowPlanner.handleExceptionDuringPlanning(FlowPlanner.java:533)
+
+This is due to private Predicate<String> filter defined in Filter class being non - serializable
+
+remember: instance variables are serialized but Predicate does not implement the serializable Interface
+so solution is to make this variable as static , this wont serialize the object.
+
+OR In this instance Predicate object was created using an annymous inner class 
+better way would be myclass implements Predicate,Seriablizable  {  write logic in here} 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+
+
+
